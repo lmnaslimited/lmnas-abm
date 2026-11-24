@@ -1,0 +1,9 @@
+# Known issues and audit findings
+
+- **Live CRM not inspected:** Docker socket access is denied from this Mac session; `fr` is not on the host PATH. Contact/Lead DocTypes, their relationship fields, Lead statuses, and CRM-side constraints remain unverified. No implementation may write until checked inside the configured container.
+- **Assessment creation TypeError:** searched local source and logs for the stated `can't multiply sequence by non-int of type 'float'`; no traceback was present. Existing orchestrator catches type/value conversion errors in validation, but that is not evidence of the CRM server cause. Obtain server traceback and exact sanitized request before diagnosing.
+- **Financial conventions conflict:** orchestrator documentation and validation treat `annual_revenue` as USD millions. Discovery import sends a CRM `annual_revenue` field alongside currency and exchange rate, but imported research profile conventions must be examined field-by-field. CRM snapshot contains values such as `55.0`, `1,000,000,000.0`, `0.0`, with currency often null, plus currencies set for some records. This is a strong indication of mixed units/unknown bases, not enough to reconstruct or correct records automatically.
+- **No shared financial service:** no Decimal-based currency/scale normalization implementation was found in scanned projects. Research engine normalization refers to ratings, not revenue conversion.
+- **Duplicate API wrappers:** orchestrator, discovery, and old importer implement separate clients/auth patterns. Consolidate only after Docker execution comparison.
+- **Interrupted skeleton:** `lmnas-abm/src/abm/crm/client.py` has an unverified guessed metadata endpoint. It is not production-ready and was created before the reset instruction.
+- **Git boundary:** current project root has no `.git`; do not initialize or alter a remote until intended Git boundary/conventions are confirmed.
