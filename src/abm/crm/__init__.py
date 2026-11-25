@@ -1,1 +1,1 @@
-"""CRM schema discovery and API client."""
+"""Single CRM adapter backed by the configured frappectl executable."""

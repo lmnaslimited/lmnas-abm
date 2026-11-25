@@ -6,4 +6,4 @@
 - **No shared financial service:** no Decimal-based currency/scale normalization implementation was found in scanned projects. Research engine normalization refers to ratings, not revenue conversion.
 - **Duplicate API wrappers:** orchestrator, discovery, and old importer implement separate clients/auth patterns. Consolidate only after Docker execution comparison.
 - **Interrupted skeleton:** `lmnas-abm/src/abm/crm/client.py` has an unverified guessed metadata endpoint. It is not production-ready and was created before the reset instruction.
-- **Git boundary:** current project root has no `.git`; do not initialize or alter a remote until intended Git boundary/conventions are confirmed.
+- **Current session boundary:** the target app has its own Git repository and is on `feature/unified-assessment-engine`. Docker socket access remains denied, so no CLI/auth/version or live CRM checks were possible.
