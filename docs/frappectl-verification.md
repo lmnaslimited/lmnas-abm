@@ -1,5 +1,7 @@
 # Frappectl Container Verification
 
+> **Historical status:** This was the initial CLI/environment check before persistent Docker Compose environment variables were configured. Its no-site-configured results are superseded by the later live CRM reads documented in [CRM read integration](crm-read-integration.md). Retained as a record of the initial verification only.
+
 **Date:** 2026-11-25  
 **Scope:** Read-only CLI verification inside Docker container `lmnas-frappectl`. No CRM documents or DocTypes were modified. No credentials, API secrets or keyring contents were displayed or inspected.
 

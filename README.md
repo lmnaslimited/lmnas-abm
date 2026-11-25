@@ -1,6 +1,6 @@
 # LMNAs ABM
 
-Clean foundation for CRM-driven Account-Based Marketing research orchestration. The approved architecture is in [architecture.md](architecture.md). The current implementation includes explicit CREATE/UPDATE command validation and a read-only Frappe CRM client/repository; it does not perform CRM writes, invoke a research agent, assemble run packages or manage approvals.
+Clean foundation for CRM-driven Account-Based Marketing research orchestration. The approved architecture is in [architecture](docs/architecture.md). The current implementation includes explicit CREATE/UPDATE command validation and a read-only Frappe CRM client/repository; it does not perform CRM writes, invoke a research agent, assemble run packages or manage approvals.
 
 See [CRM read integration](docs/crm-read-integration.md) for the verified `fr api` interface, live CRM schemas, retrieval methods and permission limits.
 
@@ -9,7 +9,7 @@ See [CRM read integration](docs/crm-read-integration.md) for the verified `fr ap
 - `src/abm/cli.py` — command parsing and explicit assessment operation.
 - `src/abm/orchestration/` — Prepare → Collect → Confirm coordination boundary.
 - `src/abm/crm/client.py` — read-only `fr api` transport.
-- `src/abm/crm/repository.py` — Organization, Template, Assessment and reference-data reads.
+- `src/abm/crm/repository.py` — CREATE/UPDATE read contexts, embedded child-row preservation, selective lookup-source enrichment, category and reference-data reads.
 - `src/abm/package/` — immutable package assembly boundary.
 - `src/abm/agent/` — provider-neutral research adapter boundary.
 - `src/abm/validation/` — output contract validation boundary.

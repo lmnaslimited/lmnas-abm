@@ -136,28 +136,44 @@ The same child DocType is used under a Template and a CRM Assessment. The templa
 
 Question rows link to category records through `assessment_category`. The repository de-duplicates those names and reads each category through `document/Assessment%20Category/{name}`.
 
-### Assessment Lookup Source and its multiselect child table
+### Assessment Lookup Source master and Assessment Lookup Sources child table
 
-Live metadata distinguishes two DocTypes:
+These are distinct DocTypes with different retrieval rules:
 
-- `Assessment Lookup Source` is a standard DocType with `source_name` (unique Data), `url` (Data), and `disabled` (Check). Its read permission is granted to System Manager only.
-- `Assessment Lookup Sources` (plural) is a child DocType (`istable=1`) with `lookup_source` (required Link → Assessment Lookup Source) and no DocType-level permissions listed.
+- `Assessment Lookup Source` (singular) is the master DocType with `source_name` (unique Data), `url` (Data), and `disabled` (Check). A master is fetched independently by its linked document name only when a parent row references it. The complete master document is retained in `lookup_source_records`, making its URL and other metadata available to consumers.
+- `Assessment Lookup Sources` (plural) is a child DocType (`istable=1`) with `lookup_source` (required Link → Assessment Lookup Source). Its rows are read only as embedded values through `Assessment Template.lookup_sources` or `Assessment Questions.additional_lookup_sources`. The code never lists or gets this child DocType as a standalone document.
 
-Both Template `lookup_sources` and question `additional_lookup_sources` are Table MultiSelect fields targeting the plural child DocType. A later permission recheck found that API listing of the plural child table `Assessment Lookup Sources` still returns `Insufficient Permission` for the configured user. Listing the singular `Assessment Lookup Source` DocType succeeds but currently returns an empty list. All six live Assessment Templates were read, and each has zero template-level and question-level lookup links, so no source record currently needs to be resolved. If a later configuration contains source references, repository retrieval attempts the singular linked records and fails closed with a sanitized `FrappeAPIError`; it does not silently omit inaccessible sources.
+A lookup association entry retains its original location, parent question row identity/order where applicable, child-row `name` and `idx`, link value, and the original child-row object. Associations remain separate from `lookup_source_records`, which are deduplicated by master name. No embedded child row is replaced by a master record.
 
-## Retrieval behavior and limitations
+Permission verification: a direct list request for the plural child DocType still returned `Insufficient Permission`; that standalone request is not part of the implementation and will not be retried. The last `fr doctype show` metadata also showed read permission for the singular master only on System Manager; a list request through the configured principal returned an empty array. Because no parent currently references a master name, an individual master GET/URL read could not be exercised live. All six live Assessment Templates were read through the parent API; none has template-level or question-level lookup links, so there are no live referenced master names to fetch or URLs to demonstrate against CRM data in this pass. Selective master resolution, including URL availability, is covered with mocked API responses. When a reference exists, only those distinct singular master documents are fetched. A missing/unreadable master, missing link value, mismatched master identity, missing `source_name`, or empty/missing URL raises `CRMReadContextError` rather than silently dropping the source.
 
-- CREATE preparation calls `get_assessment_template_for_create(template_name)` and receives the template's authoritative `assessment_questions` rows, including row IDs and linked category names.
-- UPDATE preparation calls `get_assessment_for_update(assessment_name)` and receives the selected existing Assessment's own `assessment_questions`, not the current template's question set.
-- `get_assessment_categories(question_rows)` fetches distinct linked categories. `get_lookup_sources_for_template(template)` resolves referenced multiselect values when permissions allow.
-- Organization mapping lists Currency, CRM Territory and CRM Industry. Additional verified Link targets can be requested as needed.
-- Read errors and malformed payloads raise `FrappeAPIError`. Raw stderr/stdout is intentionally withheld to prevent credential leakage; the current error includes only a generic failure and CLI exit status.
-- The configured user can list the singular `Assessment Lookup Source` DocType, which returned no rows, but cannot directly list `Assessment Lookup Sources` child rows. No linked source rows exist on the six live Templates at verification time, so successful retrieval of a populated multiselect remains unverified. CRM access and schema can change; live metadata remains authoritative.
-- No draft duplicate detection, workflow eligibility checks, approval, CRM writes, prompt assembly or agent integration are included.
+## Consolidated read contexts
+
+`prepare_create_read_context(template_name, organization_name=None, include_organization_reference_data=None)` returns a `CreateReadContext` with:
+
+- The selected full `assessment_template` and its unchanged embedded `assessment_questions` list.
+- `question_category_links` keyed to each question `name`/`idx`, plus a deduplicated `assessment_categories` map.
+- Original template- and question-level lookup child rows represented in order by `lookup_source_links`; separately deduplicated referenced master documents in `lookup_source_records`.
+- The selected existing `organization` when provided.
+- CRM Organization reference lists when applicable (by default for an Organization template), with an explicit override for callers.
+
+`prepare_update_read_context(assessment_name, include_organization_reference_data=None)` returns an `UpdateReadContext` with:
+
+- The selected existing `assessment` and its unchanged embedded question rows as the authoritative question set.
+- The linked `assessment_template_name` and only its embedded template-level `lookup_sources` rows. The template's question rows are not used to replace or augment the Assessment's question set.
+- Category links/maps for the Assessment question rows.
+- Lookup associations from the linked Template's template-level rows and the existing Assessment's question-level rows. Referenced singular masters are fetched once each.
+- The associated Organization and its reference lists when the Assessment's live relationship points to a CRM Organization.
+
+For both contexts, child rows remain distinct and retain their `name`, `idx`, link values and other properties. Master records remain separately keyed by master document name, so URLs are available as `context.lookup_source_records[lookup_source_name]["url"]` without erasing child-row identity. Calls are made only for referenced categories/sources and applicable Organization/reference data. No standalone request is made for `Assessment Lookup Sources`.
+
+The lower-level `get_assessment_template_for_create`, `get_assessment_for_update`, `get_assessment_categories`, `get_lookup_sources_for_template`, and generic reference list methods remain available. Raw stderr/stdout is withheld on API failures to prevent credential leakage; transport errors expose only a sanitized message/exit code, and context failures identify the referenced CRM document without printing server diagnostics.
+
+No draft duplicate detection, workflow eligibility checks, approval, CRM writes, prompt assembly or agent integration are included. CRM access and schema can change; live metadata remains authoritative.
 
 ## Tests
 
-Mocked tests exercise CLI argument construction, encoded document paths, response decoding, list pagination, sanitized failures, CRM Template/Assessment retrieval, child rows, linked-category de-duplication, lookup handling and Organization reference retrieval. They do not contact production CRM.
+Mocked tests exercise CLI argument construction, encoded document paths, response decoding, list pagination, sanitized failures, CREATE/UPDATE read contexts, embedded lookup rows, selective/deduplicated singular master retrieval, URL availability, missing/incomplete master handling, category identity links, and Organization reference retrieval. They do not contact production CRM.
 
 Run with:
 
