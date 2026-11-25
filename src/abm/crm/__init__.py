@@ -1,1 +1,1 @@
-"""CRM schema discovery and API client."""
+"""CRM repository boundary. No CRM client or write operation is implemented."""
