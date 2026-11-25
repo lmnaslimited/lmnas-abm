@@ -166,3 +166,5 @@ The eventual implementation has clean boundaries without legacy runtime dependen
 - Actual CRM DocTypes, child-table links, field metadata, workflow states, permissions and duplicate-context definition require live metadata inspection.
 - The correct test container cannot yet be verified because this repository defines no container and the Docker daemon is inaccessible in the current session.
 - Research-agent provider, runtime secret mechanism, storage implementation and supported operation/stage combinations require configuration and integration design in later milestones.
+
+note this document should be moved to docs folder
