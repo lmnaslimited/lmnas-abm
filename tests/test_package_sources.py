@@ -25,10 +25,11 @@ class SourceCatalogueTests(unittest.TestCase):
         docs = {"A": source("A", disabled=0), "B": source("B", disabled=1)}
         api.get_document.side_effect = lambda dt, name: docs[name] if dt == "Assessment Lookup Source" else {"name": name}
         catalogue = CRMRepository(api).get_source_catalogue(page_size=1)
-        self.assertEqual(list(catalogue), ["A"])
+        self.assertEqual(list(catalogue), ["A", "B"])
         api.list_documents.assert_called_once()
         self.assertEqual(api.list_documents.call_args.kwargs["page_size"], 1)
-        self.assertEqual(api.get_document.call_args_list[0].args, ("Assessment Lookup Source", "A"))
+        self.assertEqual([call.args for call in api.get_document.call_args_list],
+                         [("Assessment Lookup Source", "A"), ("Assessment Lookup Source", "B")])
 
     def test_catalogue_schema_and_reference_fail_closed(self):
         api = Mock()
@@ -53,8 +54,7 @@ class TerritoryResolutionTests(unittest.TestCase):
                "D": source("D", ["Subdivision"]), "B": source("B", ["CountryB"]), "X": source("X", ["Sibling"])}
         result = resolve_sources(cat, self.territories, run_territory="Region", scope_type="region", questions=[])
         self.assertEqual([(p["phase"], p["source_ids"]) for p in result["phases"]],
-                         [("global", ["G"]), ("regional", ["R"]), ("country", ["A"]),
-                          ("territory", ["D"]), ("country", ["B"])])
+                         [("global", ["G"]), ("regional", ["R"]), ("regional_descendants", ["A", "D", "B"])])
 
     def test_country_exact_parent_global_order_and_no_siblings(self):
         cat = {"G": source("G"), "R": source("R", ["Region"]), "A": source("A", ["CountryA"]),
@@ -80,7 +80,7 @@ class TerritoryResolutionTests(unittest.TestCase):
     def test_shared_parent_descendant_source_appears_in_earliest_phase_only(self):
         shared = source("SHARED", ["Region", "CountryA"])
         result = resolve_sources({"SHARED": shared}, self.territories, run_territory="Region", scope_type="region", questions=[])
-        self.assertEqual([p["source_ids"] for p in result["phases"]], [[], ["SHARED"], [], [], []])
+        self.assertEqual([p["source_ids"] for p in result["phases"]], [[], ["SHARED"], []])
         self.assertEqual(result["source_selection"]["SHARED"]["applicable_territories"], ["Region", "CountryA"])
 
     def test_explicit_source_still_requires_territory_match(self):
@@ -103,6 +103,31 @@ class PackageTests(unittest.TestCase):
             checksums = json.loads(one["files"]["checksums.json"])
             self.assertEqual(checksums["master_prompt.md"], hashlib.sha256(b" exact\n").hexdigest())
             self.assertTrue((Path(tmp) / "one" / "manifest.json").exists())
+            archive = Path(tmp) / "one" / "one.zip"
+            self.assertTrue(archive.is_file())
+            PackageAssembler.verify_archive(archive, one["files"])
+
+    def test_projection_and_organization_exclusions_keep_only_review_fields(self):
+        config = {"assessment_template": {
+            "name": "T", "doctype": "Assessment Template", "master_prompt": "p",
+            "result_contract": "{}", "owner": "secret", "assessment_questions": []},
+            "assessment_questions": [{"name": "q", "idx": 4, "question": "Q",
+                "assessment_category": "C", "mandatory": 1, "ai_rating": 5,
+                "creation": "now", "ai_prompt_instructions": "instructions"}],
+            "source_catalogue": {"S": source("S")}, "organization_exclusions": [
+                {"crm_organization_id": "O", "organization_name": "Org", "url": None}],
+            "research_plan": {}}
+        package = PackageAssembler().assemble(config, {})
+        template = json.loads(package["files"]["template_snapshot.json"])
+        question = json.loads(package["files"]["questions.json"])[0]
+        source_doc = json.loads(package["files"]["source_catalogue.json"])["S"]
+        self.assertNotIn("owner", template)
+        self.assertNotIn("assessment_questions", template)
+        self.assertNotIn("ai_rating", question)
+        self.assertNotIn("idx", question)
+        self.assertEqual(question["question"], "Q")
+        self.assertEqual(source_doc["applicable_territories"], [])
+        self.assertEqual(json.loads(package["files"]["organization_exclusions.json"])[0]["url"], None)
 
     def test_preparation_composes_live_context_catalogue_territory_and_plan(self):
         template = {"name": "T", "document_type": "CRM Organization", "master_prompt": "P",
@@ -131,13 +156,14 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(plan["template_explicit_source_ids"], ["EXPLICIT"])
         self.assertEqual(plan["question_categories"], {"q": "CAT"})
         catalogue = json.loads(prepared["files"]["source_catalogue.json"])
-        self.assertEqual(set(catalogue), {"EXPLICIT", "GEN"})
+        self.assertEqual(set(catalogue), {"EXPLICIT", "GEN", "OUT"})
         self.assertEqual(prepared["preparation_summary"], {
             "catalogue_retrieved": 3, "applicable_selected": 2, "excluded": 1,
+            "organizations_retrieved": 4, "organization_exclusions": 4,
             "phase_counts": [
                 {"phase": "global", "territory": None, "source_count": 1},
                 {"phase": "regional", "territory": "Region", "source_count": 1},
-                {"phase": "country", "territory": "Country", "source_count": 0},
+                {"phase": "regional_descendants", "territory": ["Country"], "source_count": 0},
             ],
         })
 
@@ -150,6 +176,16 @@ class PackageTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 PackageAssembler().assemble(config, {}, output_dir=target)
             self.assertEqual((target / "keep.txt").read_text(), "keep")
+
+    def test_zip_is_inside_package_directory(self):
+        config = {"assessment_template": {"master_prompt": "p", "result_contract": "{}"}}
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "run.part"
+            PackageAssembler().assemble(config, {}, output_dir=target)
+            self.assertTrue((target / "run.part.zip").is_file())
+            with __import__("zipfile").ZipFile(target / "run.part.zip") as archive:
+                self.assertNotIn("run.part.zip", archive.namelist())
+                self.assertIn("manifest.json", archive.namelist())
 
     def test_preparer_rejects_unknown_regional_territory(self):
         context = type("Context", (), {"assessment_template": {"name": "T", "master_prompt": "p",

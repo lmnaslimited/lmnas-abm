@@ -46,6 +46,6 @@ PYTHONPATH=src python -m abm.cli prepare \
   --region Europe
 ```
 
-The command reads the selected template, complete enabled source catalogue and CRM Territory tree, resolves applicable sources, and writes a unique package directory under the configured output root. `--template`, `--region`, and `--output-dir` override TOML defaults; `--config` selects another configuration file.
+The command reads the selected template, complete source catalogue and CRM Territory tree, bulk retrieves all CRM Organizations for duplicate exclusions, resolves applicable sources, and writes a unique projected package with a verified ZIP inside that package directory. `--template`, `--region`, and `--output-dir` override TOML defaults; `--config` selects another configuration file. The manifest records CRM API request counts and timings by DocType.
 
 The `run` command still only validates an operation/stage request and does not execute research. UPDATE package preparation, country CLI execution, agent invocation, output validation, approval and CRM persistence are unsupported.

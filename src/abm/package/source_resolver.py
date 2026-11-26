@@ -67,11 +67,8 @@ def resolve_sources(
     descendants.sort(key=lambda n: (territories[n]["lft"], n))
     parent = parents.get(run_territory) if run_territory else None
     if scope_type == "region":
-        territory_phases = [
-            ("global", None), ("regional", run_territory),
-            *(("country" if parents[name] == run_territory else "territory", name)
-              for name in descendants),
-        ]
+        territory_phases = [("global", None), ("regional", run_territory),
+                             ("regional_descendants", descendants)]
     elif scope_type == "country":
         territory_phases = [("exact", run_territory), ("parent", parent), ("global", None)]
     else:
@@ -85,7 +82,11 @@ def resolve_sources(
         rows = []
         for source_id, doc in catalogue.items():
             assigned = source_territories[source_id]
-            matches = (not assigned and territory is None) or (territory is not None and territory in assigned)
+            matches = (not assigned and territory is None) or (
+                territory is not None and
+                (territory in assigned if isinstance(territory, str)
+                 else any(item in assigned for item in territory))
+            )
             if scope_type == "country" and phase == "parent":
                 matches = bool(assigned) and parent in assigned
             if scope_type == "country" and territory is None:
@@ -151,6 +152,10 @@ def resolve_sources(
                         "selection_reasons": list(dict.fromkeys(rationale)),
                         "applicable_territories": matching_territories,
                         "applicable_categories": source_categories[sid],
+                        "matching_territories": [
+                            territory for territory in matching_territories
+                            if territory in descendants or territory == run_territory
+                        ],
                         "phase_index": chosen_phase.get(sid)}
     return {"run_territory": run_territory, "scope_type": scope_type,
             "phases": phase_sources, "generic_source_ids": list(dict.fromkeys(generic)),

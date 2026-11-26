@@ -1,24 +1,24 @@
-# Research package schema (v1.0)
+# Research package schema (v2.0)
 
-Package files are UTF-8. JSON files use sorted keys, compact separators and a trailing newline. `master_prompt.md` is the CRM `master_prompt` string encoded as UTF-8 without edits. `result_contract.json` contains the exact CRM `result_contract` string, byte-for-byte.
+Package files are UTF-8. JSON uses sorted keys, compact separators, and a trailing newline. `master_prompt.md` is the current CRM `master_prompt` string encoded byte-for-byte; `result_contract.json` remains the exact CRM contract bytes. No CRM records are changed.
+
+Each run creates `packages/<run-id>/` and places `<run-id>.zip` inside that same directory. The ZIP contains exactly the package files (without a nested directory prefix and without itself), with sorted relative paths and a fixed timestamp. Before returning, the writer checks ZIP CRC, entry names, and byte equality against the package content and manifest checksums.
 
 | File | Contents |
 |---|---|
-| `manifest.json` | Schema version, CRM template identity/version metadata, source identities, content file list, optional caller-supplied creation metadata. |
-| `run_context.json` | Caller-provided run scope and identifiers. |
-| `master_prompt.md` | Unchanged CRM master prompt. |
-| `result_contract.json` | Unchanged CRM result contract. |
-| `template_snapshot.json` | Complete CRM template document including embedded rows. |
-| `questions.json` | Ordered authoritative question rows. |
-| `organization_context.json` | Present when the read context contains an Organization. |
-| `source_catalogue.json` | Only source master documents selected for this regional run, keyed by CRM name. |
-| `research_plan.json` | Run scope; ordered territorial phases with phase-specific generic/category pools; question-to-category/source mappings; template/question explicit associations including original child-row identity/order; source priority, rationale, applicable CRM territory/category identities and earliest-phase provenance. |
-| `checksums.json` | SHA-256 of each content file except manifest and checksums themselves. |
+| `manifest.json` | Schema version, template identity/version, complete source identities, source counts, request counts/errors/timings by DocType, file list, creation metadata. |
+| `run_context.json` | Run scope, operation, stage, and identifiers. |
+| `master_prompt.md` | Exact CRM master prompt. |
+| `result_contract.json` | Exact CRM result contract. |
+| `template_snapshot.json` | Projected template identity/configuration fields only. |
+| `questions.json` | Ordered projected question identity, category, wording, weight, flags, and AI research instructions; excludes evaluation results and audit fields. |
+| `source_catalogue.json` | Complete projected source catalogue, including disabled and out-of-scope sources, keyed by CRM identity. Retains source identity/name/URL/disabled and child row identities plus territory/category links. |
+| `research_plan.json` | Exactly `global`, `regional`, and aggregated `regional_descendants` phases; source/category/question associations, explicit links, earliest-phase provenance, matching territory identities, and concise unassigned reasons. |
+| `organization_exclusions.json` | Every CRM Organization, without territory filters, projected to CRM identity, organization name, and website URL. Missing websites remain null. |
+| `checksums.json` | SHA-256 for each content file except manifest and checksums themselves. |
 
-Package assembly is deterministic for identical CRM and run inputs. Optional `creation_metadata` is caller-controlled. Disk assembly requires a new output directory and fails if that directory already exists, so package contents cannot be overwritten by a later assembly call.
+The current CRM Assessment Template embeds the question rows and their category Link identities, so one full template read supplies both. Categories are not fetched individually. The live Frappe API v2 list endpoint silently omits child tables on lookup-source rows even when child fields are requested. Preparation therefore paginates source identity/state, then reads each full source document once to preserve territory/category applicability. Organizations and CRM Territories are bulk paginated. `manifest.json` records measured request counts, failures, and elapsed seconds by DocType; the CLI reports retrieved counts and URL coverage.
 
-The live CRM source master fields are `applicable_territories` (rows in `Territories`, link field `territory`) and `applicable_assessment_categories` (rows in `Assessment Categories`, link field `assessment_category`). Each row's full original CRM properties remain in `source_catalogue.json`. Territory ancestry comes from `CRM Territory.parent_crm_territory`; nested set `lft` order sorts descendants.
+Disabled lookup source masters remain in `source_catalogue.json` but are never assigned to the research plan. Every active source is either assigned or has a reason in `unassigned_sources`. A source is assigned once, at its earliest matching phase, while all matching territory/category associations remain provenance. Territory ancestry comes from `CRM Territory.parent_crm_territory`; nested set `lft` orders descendants.
 
-`ResearchPackagePreparer.prepare_create()` composes the CRM context, full enabled source catalogue, full territory list, explicit associations, source resolver and assembler. The full catalogue and territory tree are internal resolution inputs. The package catalogue is filtered to every matching global, regional-parent and descendant source; unrelated sources are excluded. Explicit associations outside the selected scope fail clearly. Every source ID in the plan is checked against the packaged catalogue before writing. It does not invoke an agent or expose a country-run CLI command.
-
-`config/abm.toml` holds non-secret defaults. CLI values override TOML values. The sample leaves the template and region blank by design, so an operator must select them. The CLI writes to a new run-ID directory and fails rather than overwriting an existing directory.
+Package assembly requires a new output directory and fails if one already exists. It does not overwrite earlier packages.

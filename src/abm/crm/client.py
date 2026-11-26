@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import time
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 
 class FrappeAPIError(RuntimeError):
@@ -35,6 +36,17 @@ class FrappeAPIClient:
         self.executable = executable
         self._runner = runner or subprocess.run
         self.timeout = timeout
+        self.request_metrics: dict[str, dict[str, float | int]] = {}
+
+    def _record_request(self, path: str, elapsed: float, failed: bool) -> None:
+        parts = path.split("/")
+        doctype = unquote(parts[1]) if len(parts) > 1 else "unknown"
+        row = self.request_metrics.setdefault(
+            doctype, {"requests": 0, "failures": 0, "elapsed_seconds": 0.0}
+        )
+        row["requests"] += 1
+        row["failures"] += int(failed)
+        row["elapsed_seconds"] += elapsed
 
     def get(self, path: str, params: Mapping[str, Any] | None = None) -> Any:
         """Perform one GET through ``fr api`` and parse its JSON response."""
@@ -51,6 +63,7 @@ class FrappeAPIClient:
 
         if shutil.which(self.executable) is None and self._runner is subprocess.run:
             raise FrappeAPIError("Frappe CLI `fr` is not installed or not on PATH")
+        started = time.perf_counter()
         try:
             result = self._runner(
                 command,
@@ -60,16 +73,25 @@ class FrappeAPIClient:
                 timeout=self.timeout,
             )
         except subprocess.TimeoutExpired as exc:
+            self._record_request(path, time.perf_counter() - started, True)
             raise FrappeAPIError("Frappe API request timed out") from exc
         except OSError as exc:
+            self._record_request(path, time.perf_counter() - started, True)
             raise FrappeAPIError("Could not execute Frappe CLI `fr api`") from exc
 
         if result.returncode != 0:
+            self._record_request(path, time.perf_counter() - started, True)
             raise FrappeAPIError(f"Frappe API request failed (fr api exit {result.returncode})")
         try:
-            return json.loads(result.stdout)
+            response = json.loads(result.stdout)
         except (TypeError, json.JSONDecodeError) as exc:
+            self._record_request(path, time.perf_counter() - started, True)
             raise FrappeAPIError("Frappe API returned invalid JSON") from exc
+        self._record_request(path, time.perf_counter() - started, False)
+        return response
+
+    def metrics_snapshot(self) -> dict[str, dict[str, float | int]]:
+        return {doctype: dict(values) for doctype, values in sorted(self.request_metrics.items())}
 
     def get_document(self, doctype: str, name: str) -> dict[str, Any]:
         """Fetch one document using the read-only API v2 document endpoint."""

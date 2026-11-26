@@ -148,11 +148,11 @@ class CRMRepository:
         }
 
     def get_source_catalogue(self, *, page_size: int = 100) -> dict[str, dict[str, Any]]:
-        """Read and validate every enabled lookup source master.
+        """Read all lookup source masters, retaining full child associations.
 
-        Child-table values are preserved exactly as returned by the full
-        document endpoint. Their Link targets are checked against live CRM
-        identities before the catalogue is returned.
+        Live API v2 list responses omit child tables even when explicitly
+        requested. Each listed master therefore needs one full document read.
+        Disabled masters are retained in the catalogue but are not planned.
         """
         try:
             rows = self.list_documents(
@@ -173,16 +173,12 @@ class CRMRepository:
             if name in names:
                 raise CRMReadContextError(f"Source catalogue contains duplicate identity {name!r}")
             names.add(name)
-            if not _is_enabled(row.get("disabled")):
-                continue
             try:
                 doc = self.get_document("Assessment Lookup Source", name)
             except FrappeAPIError as exc:
                 raise CRMReadContextError(f"Enabled source {name!r} could not be read") from exc
             if doc.get("name") != name:
                 raise CRMReadContextError(f"Enabled source {name!r} returned a mismatched identity")
-            if not _is_enabled(doc.get("disabled")):
-                continue
             _validate_source_document(doc)
             _validate_source_references(self, doc)
             source_name = doc["source_name"].strip()

@@ -91,7 +91,7 @@ class PrepareCLITests(unittest.TestCase):
             self.assertTrue((package_path / "manifest.json").is_file())
             import json
             catalogue = json.loads((package_path / "source_catalogue.json").read_text())
-            self.assertEqual(set(catalogue), {"GLOBAL", "REGIONAL"})
+            self.assertEqual(set(catalogue), {"GLOBAL", "REGIONAL", "OUTSIDE"})
 
     def test_config_defaults_are_used_when_cli_values_are_absent(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -85,6 +85,14 @@ class FrappeAPIClientTests(unittest.TestCase):
         with self.assertRaisesRegex(FrappeAPIError, "not a JSON object"):
             client.get_document("CRM Organization", "name")
 
+    def test_request_metrics_count_doctype_calls_and_time(self):
+        client = FrappeAPIClient(runner=Mock(return_value=completed('[{"name":"A"}]')))
+        client.list_documents("CRM Organization", page_size=10)
+        metrics = client.metrics_snapshot()["CRM Organization"]
+        self.assertEqual(metrics["requests"], 1)
+        self.assertEqual(metrics["failures"], 0)
+        self.assertGreaterEqual(metrics["elapsed_seconds"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

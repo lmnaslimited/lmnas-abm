@@ -126,6 +126,7 @@ def main(
 
     summary = package["preparation_summary"]
     output(f"Package: {package_dir}")
+    output(f"ZIP: {package_dir / (package_dir.name + '.zip')}")
     output("Assessment operation: CREATE")
     output(f"Research stage: {args.research_stage}")
     output(f"Template: {template}")
@@ -136,9 +137,16 @@ def main(
         f"selected={summary['applicable_selected']} "
         f"excluded={summary['excluded']}"
     )
+    output(
+        "Organizations: "
+        f"retrieved={summary.get('organizations_retrieved', 0)} "
+        f"packaged as exclusions={summary.get('organization_exclusions', 0)}"
+    )
     output("Phases:")
     for phase in summary["phase_counts"]:
         territory = phase["territory"] or "global"
+        if isinstance(territory, list):
+            territory = f"{len(territory)} descendant territories"
         noun = "source" if phase["source_count"] == 1 else "sources"
         output(f"  {phase['phase']} ({territory}): {phase['source_count']} {noun}")
     return 0
