@@ -1,0 +1,562 @@
+[
+  {
+    "contract_type": "ASSESSMENT",
+    "contract_version": "1.1",
+    "description": "Structured research results for Organization discovery and full assessment. The same question-result structure is used at both stages.",
+    "stages": [
+      "DISCOVERY",
+      "FULL_ASSESSMENT"
+    ],
+    "schema": {
+      "type": "object",
+      "required": [
+        "contract_type",
+        "contract_version",
+        "assessment_stage",
+        "subject",
+        "question_results",
+        "stage_summary",
+        "discovered_sources"
+      ],
+      "properties": {
+        "contract_type": {
+          "type": "string",
+          "const": "ASSESSMENT"
+        },
+        "contract_version": {
+          "type": "string",
+          "const": "1.1"
+        },
+        "assessment_stage": {
+          "type": "string",
+          "enum": [
+            "DISCOVERY",
+            "FULL_ASSESSMENT"
+          ]
+        },
+        "subject": {
+          "type": "object",
+          "required": [
+            "organization_name"
+          ],
+          "properties": {
+            "organization_name": {
+              "type": "string"
+            },
+            "website": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "country": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "identity_notes": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "question_results": {
+          "type": "array",
+          "description": "One result for every question supplied in assessment_template.json. Preserve the supplied question identity, wording, category and sequence.",
+          "items": {
+            "type": "object",
+            "required": [
+              "question_id",
+              "assessment_category",
+              "question",
+              "ai_rating",
+              "ai_evidence_status",
+              "ai_confidence",
+              "ai_supporting_evidence",
+              "evidence_references"
+            ],
+            "properties": {
+              "question_id": {
+                "type": "string",
+                "description": "Exact identifier supplied for the question in assessment_template.json. Never create or modify this identifier."
+              },
+              "assessment_category": {
+                "type": "string",
+                "description": "Exact category supplied by CRM."
+              },
+              "question": {
+                "type": "string",
+                "description": "Exact question wording supplied by CRM."
+              },
+              "question_type": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Exact question type supplied by CRM."
+              },
+              "close_ended": {
+                "type": "boolean"
+              },
+              "mandatory": {
+                "type": "boolean"
+              },
+              "ai_rating": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "Rating compatible with the CRM Rating field and the question's configured type. For close-ended binary questions, use 1 for a verified positive and 0 for a verified negative. Use null when evidence is insufficient to determine a rating."
+              },
+              "ai_evidence_status": {
+                "type": "string",
+                "enum": [
+                  "Supported",
+                  "Inferred",
+                  "Insufficient"
+                ]
+              },
+              "ai_confidence": {
+                "type": "string",
+                "enum": [
+                  "Low",
+                  "Medium",
+                  "High"
+                ]
+              },
+              "ai_supporting_evidence": {
+                "type": "string",
+                "description": "Concise explanation of the finding, including relevant facts, dates and reasoning. Clearly distinguish company-reported claims from independently corroborated findings."
+              },
+              "evidence_references": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "source_id",
+                    "url",
+                    "relevance"
+                  ],
+                  "properties": {
+                    "source_id": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "publisher": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "publication_date": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "access_date": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "relevance": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "discovery_qualification": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "QUALIFIED",
+                  "NOT_QUALIFIED",
+                  "REQUIRES_REVIEW",
+                  null
+                ],
+                "description": "Discovery-stage disposition for this question, where applicable. Use null for full assessment."
+              }
+            }
+          }
+        },
+        "stage_summary": {
+          "type": "object",
+          "required": [
+            "overall_finding",
+            "mandatory_negative_found",
+            "insufficient_evidence_questions",
+            "limitations"
+          ],
+          "properties": {
+            "overall_finding": {
+              "type": "string",
+              "description": "Concise summary of the research findings for this stage."
+            },
+            "discovery_qualification": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "QUALIFIED",
+                "NOT_QUALIFIED",
+                "REQUIRES_REVIEW",
+                null
+              ]
+            },
+            "qualification_score": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Discovery qualification score, if calculated under the supplied run configuration. Do not invent a scoring formula."
+            },
+            "qualification_threshold": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Threshold supplied in run_context.json. Return null if not applicable."
+            },
+            "mandatory_negative_found": {
+              "type": "boolean",
+              "description": "True only when at least one mandatory criterion has a verified negative finding."
+            },
+            "mandatory_negative_questions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Question identifiers for mandatory criteria with verified negative findings."
+            },
+            "insufficient_evidence_questions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Question identifiers for which available evidence is insufficient."
+            },
+            "limitations": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "discovered_sources": {
+          "type": "array",
+          "description": "Credible reusable sources newly identified during this research, deduplicated by canonical URL. Return an empty array when none qualify.",
+          "items": {
+            "type": "object",
+            "required": [
+              "source_id",
+              "source_name",
+              "url",
+              "publisher",
+              "applicable_territories",
+              "applicable_assessment_categories",
+              "relevance"
+            ],
+            "properties": {
+              "source_id": {
+                "type": "string",
+                "pattern": "^DISC-SRC-[0-9]{3,}$",
+                "description": "Temporary unique identifier, also used by evidence_references when this source is cited."
+              },
+              "source_name": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Canonical URL."
+              },
+              "publisher": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "applicable_territories": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Exact CRM Territory identities; empty for global sources."
+              },
+              "applicable_assessment_categories": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Exact CRM Assessment Category identities; empty for generic sources."
+              },
+              "relevance": {
+                "type": "string",
+                "description": "Concise explanation of the source’s relevance."
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "validation_rules": [
+      "Return exactly one question result for every question supplied in assessment_template.json.",
+      "Do not add, remove, merge, reorder or rewrite assessment questions.",
+      "Preserve question_id, assessment_category, question, question_type, close_ended and mandatory exactly as supplied.",
+      "The question_results array must follow the same sequence as the supplied assessment template.",
+      "Use only the configured question type and CRM rating semantics. Do not invent rating scales or answer options.",
+      "For close-ended binary questions, use ai_rating 1 for a verified positive and 0 for a verified negative. Use null when evidence is insufficient.",
+      "Insufficient evidence must never be treated as a verified negative.",
+      "A mandatory criterion disqualifies a candidate only when its negative finding is supported by evidence.",
+      "A mandatory criterion with insufficient evidence requires further research or human review; it is not automatically a disqualification.",
+      "The discovery qualification score and threshold must follow the run configuration. Do not invent a formula or threshold.",
+      "Discovery and full assessment must use the same question-result structure. Research depth and stage-specific fields may differ.",
+      "Every factual finding must be supported by evidence references where sources are available. Do not fabricate sources, URLs, dates or source identifiers.",
+      "Return null for unavailable optional values rather than guessing.",
+      "Do not return or modify human-controlled CRM fields such as rating, evidence_status, confidence, supporting_evidence, accept_ai, score or final_score.",
+      "Return discovered_sources for both DISCOVERY and FULL_ASSESSMENT. Use an empty array when no qualifying new sources are found.",
+      "Include only credible, reusable sources absent from the complete source_catalogue.json; absence from the selected research_plan.json alone is not sufficient. Deduplicate by canonical URL and use exact CRM Territory and Assessment Category identities where applicable.",
+      "Each discovered source_id must be unique and must match the same source_id used in question_results[].evidence_references when that discovered source is cited."
+    ]
+  },
+  {
+    "contract_type": "ORGANIZATION",
+    "contract_version": "1.0",
+    "description": "Proposed CRM Organization master-data values for a newly researched organization. This is separate from the assessment question results.",
+    "schema": {
+      "type": "object",
+      "required": [
+        "contract_type",
+        "contract_version",
+        "organization",
+        "field_evidence"
+      ],
+      "properties": {
+        "contract_type": {
+          "type": "string",
+          "const": "ORGANIZATION"
+        },
+        "contract_version": {
+          "type": "string",
+          "const": "1.0"
+        },
+        "organization": {
+          "type": "object",
+          "required": [
+            "organization_name"
+          ],
+          "properties": {
+            "organization_name": {
+              "type": "string"
+            },
+            "website": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "linkedin": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "twitter": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "facebook": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "company_description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "no_of_employees": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "annual_revenue": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "currency": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "CRM Currency value, if reliably established and available in supplied CRM reference data."
+            },
+            "exchange_rate": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "description": "Populate only when the applicable rate is supplied or reliably established under the CRM process. Otherwise null."
+            },
+            "territory": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Must match an allowed CRM Territory value supplied in crm_reference_data.json."
+            },
+            "industry": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Must match an allowed CRM Industry value supplied in crm_reference_data.json."
+            },
+            "address": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "address_line1": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "address_line2": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "city": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "country": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pincode": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "address_type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Must match an allowed CRM Address Type value supplied in crm_reference_data.json."
+                }
+              }
+            }
+          }
+        },
+        "field_evidence": {
+          "type": "array",
+          "description": "One evidence record for every proposed Organization field with a non-null value.",
+          "items": {
+            "type": "object",
+            "required": [
+              "field_name",
+              "field_value",
+              "evidence_status",
+              "confidence",
+              "source_references"
+            ],
+            "properties": {
+              "field_name": {
+                "type": "string"
+              },
+              "field_value": {},
+              "evidence_status": {
+                "type": "string",
+                "enum": [
+                  "Supported",
+                  "Inferred",
+                  "Insufficient"
+                ]
+              },
+              "confidence": {
+                "type": "string",
+                "enum": [
+                  "Low",
+                  "Medium",
+                  "High"
+                ]
+              },
+              "source_references": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Source IDs from the research evidence."
+              },
+              "notes": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        },
+        "identity_and_relationship_notes": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Clarify legal entity identity, parent/subsidiary relationships, trading names and potential duplicate records."
+        }
+      }
+    },
+    "validation_rules": [
+      "Return only fields represented in the supplied Organization contract and CRM reference data.",
+      "Do not invent values to complete CRM fields. Use null when information is unavailable or cannot be established reliably.",
+      "Every non-null proposed Organization field must have a corresponding field_evidence record.",
+      "Use exact CRM Link values from crm_reference_data.json for fields such as territory, industry, currency and address_type. Do not create new Link values.",
+      "Do not invent an exchange rate. Use only a supplied or reliably established value under the applicable CRM process.",
+      "Distinguish legal entities, parent companies, subsidiaries, brands and trading names. Do not combine separate legal entities into one Organization record.",
+      "Do not return a CRM document name, CRM ID or other identifier unless it was explicitly supplied.",
+      "The Organization payload is proposed master data, not an instruction to create or update a CRM record.",
+      "The research agent must not write directly to CRM."
+    ]
+  }
+]
