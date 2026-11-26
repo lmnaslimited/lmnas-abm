@@ -76,8 +76,32 @@ def resolve_sources(
 
     source_territories = {name: _links(doc, "territor") for name, doc in catalogue.items()}
     source_categories = {name: _links(doc, "categor") for name, doc in catalogue.items()}
+    question_categories = {
+        row.get("assessment_category") for row in questions
+        if isinstance(row.get("assessment_category"), str) and row["assessment_category"]
+    }
+    explicit_template = []
+    explicit_question: dict[str, list[str]] = {}
+    explicit_by_source: dict[str, list[dict[str, Any]]] = {}
+    for link in explicit_links or []:
+        sid = link["lookup_source"]
+        explicit_by_source.setdefault(sid, []).append(link)
+        if link["location"] == "template.lookup_sources":
+            explicit_template.append(sid)
+        else:
+            explicit_question.setdefault(link["question_row_name"], []).append(sid)
+    explicit = set(explicit_template + [s for values in explicit_question.values() for s in values])
+    category_matches = {
+        sid: bool(set(categories) & question_categories)
+        for sid, categories in source_categories.items()
+    }
+    source_eligible = {
+        sid: (not source_categories[sid]) or category_matches[sid] or sid in explicit
+        for sid in catalogue
+    }
     phase_sources: list[dict[str, Any]] = []
     chosen_phase: dict[str, int] = {}
+    territory_applicable: set[str] = set()
     for i, (phase, territory) in enumerate(territory_phases):
         rows = []
         for source_id, doc in catalogue.items():
@@ -91,23 +115,15 @@ def resolve_sources(
                 matches = bool(assigned) and parent in assigned
             if scope_type == "country" and territory is None:
                 matches = not assigned
-            if matches and source_id not in chosen_phase:
+            if matches:
+                territory_applicable.add(source_id)
+            if matches and source_eligible[source_id] and source_id not in chosen_phase:
                 chosen_phase[source_id] = i
                 rows.append(source_id)
         phase_sources.append({"phase": phase, "territory": territory, "source_ids": rows})
     # Category applicability is independent of territory. Explicit links bypass
     # automatic category matching but never bypass the territory plan.
     question_sources: dict[str, list[str]] = {}
-    explicit_template = []
-    explicit_question: dict[str, list[str]] = {}
-    explicit_by_source: dict[str, list[dict[str, Any]]] = {}
-    for link in explicit_links or []:
-        sid = link["lookup_source"]
-        explicit_by_source.setdefault(sid, []).append(link)
-        if link["location"] == "template.lookup_sources":
-            explicit_template.append(sid)
-        else:
-            explicit_question.setdefault(link["question_row_name"], []).append(sid)
     generic: list[str] = []
     category_map: dict[str, list[str]] = {}
     for phase in phase_sources:
@@ -120,6 +136,8 @@ def resolve_sources(
                 phase["generic_source_ids"].append(sid)
             else:
                 for cat in cats:
+                    if cat not in question_categories:
+                        continue
                     category_map.setdefault(cat, []).append(sid)
                     phase["category_sources"].setdefault(cat, []).append(sid)
     eligible = set(chosen_phase)
@@ -132,23 +150,30 @@ def resolve_sources(
         ))
         question_sources[str(qid)] = selected
     reasons = {}
-    explicit = set(explicit_template + [s for values in explicit_question.values() for s in values])
-    question_categories = {str(row.get("name")): row.get("assessment_category") for row in questions}
     for sid in catalogue:
         matching_territories = source_territories[sid]
         if sid in explicit:
             reason = "explicit_template" if sid in explicit_template else "explicit_question"
         elif not source_categories[sid]:
             reason = "generic"
-        else:
+        elif category_matches[sid]:
             reason = "category_match"
+        else:
+            reason = "category_not_applicable"
         rationale = [f"explicit:{link['location']}" for link in explicit_by_source.get(sid, [])]
-        rationale.append("category_match" if source_categories[sid] else "generic_research")
-        applicable = sid in chosen_phase
+        if not source_categories[sid]:
+            rationale.append("generic_research")
+        elif category_matches[sid]:
+            rationale.append("category_match")
+        else:
+            rationale.append("category_not_applicable")
+        applicable = sid in territory_applicable
+        assigned = sid in chosen_phase
         if not applicable:
             rationale.append("territory_not_applicable")
-        reasons[sid] = {"priority": (0 if sid in explicit else 1) if applicable else None,
+        reasons[sid] = {"priority": (0 if sid in explicit else 1) if assigned else None,
                         "territory_applicable": applicable, "reason": reason,
+                        "assigned": assigned,
                         "selection_reasons": list(dict.fromkeys(rationale)),
                         "applicable_territories": matching_territories,
                         "applicable_categories": source_categories[sid],
@@ -157,10 +182,11 @@ def resolve_sources(
                             if territory in descendants or territory == run_territory
                         ],
                         "phase_index": chosen_phase.get(sid)}
+    question_categories_by_id = {str(row.get("name")): row.get("assessment_category") for row in questions}
     return {"run_territory": run_territory, "scope_type": scope_type,
             "phases": phase_sources, "generic_source_ids": list(dict.fromkeys(generic)),
             "category_sources": category_map, "question_sources": question_sources,
-            "question_categories": question_categories,
+            "question_categories": question_categories_by_id,
             "template_explicit_source_ids": list(dict.fromkeys(explicit_template)),
             "question_explicit_source_ids": explicit_question,
             "explicit_associations": list(explicit_links or []),

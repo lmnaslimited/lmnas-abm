@@ -65,7 +65,7 @@
         },
         "question_results": {
           "type": "array",
-          "description": "One result for every question supplied in assessment_template.json. Preserve the supplied question identity, wording, category and sequence.",
+          "description": "One result for every question supplied in questions.json. Preserve the supplied question identity, wording, category and sequence.",
           "items": {
             "type": "object",
             "required": [
@@ -81,7 +81,7 @@
             "properties": {
               "question_id": {
                 "type": "string",
-                "description": "Exact identifier supplied for the question in assessment_template.json. Never create or modify this identifier."
+                "description": "Exact identifier supplied for the question in questions.json. Never create or modify this identifier."
               },
               "assessment_category": {
                 "type": "string",
@@ -317,7 +317,7 @@
       }
     },
     "validation_rules": [
-      "Return exactly one question result for every question supplied in assessment_template.json.",
+      "Return exactly one question result for every question supplied in questions.json.",
       "Do not add, remove, merge, reorder or rewrite assessment questions.",
       "Preserve question_id, assessment_category, question, question_type, close_ended and mandatory exactly as supplied.",
       "The question_results array must follow the same sequence as the supplied assessment template.",

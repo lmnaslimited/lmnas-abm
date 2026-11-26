@@ -108,6 +108,16 @@ class ResearchContractArtifactTests(unittest.TestCase):
         self.assertEqual(item["properties"]["publisher"]["type"], ["string", "null"])
         self.assertEqual(item["properties"]["url"]["format"], "uri")
 
+    def test_assessment_contract_question_references_use_questions_artifact(self):
+        contract = self.assessment
+        text = json.dumps({
+            "description": contract.get("description"),
+            "schema": contract["schema"],
+            "validation_rules": contract["validation_rules"],
+        })
+        self.assertNotIn("assessment_template.json", text)
+        self.assertIn("questions.json", text)
+
     def test_assessment_outputs_validate_for_empty_and_populated_discovered_sources(self):
         schema = self.assessment["schema"]
         source = {
@@ -152,8 +162,19 @@ class ResearchContractArtifactTests(unittest.TestCase):
 
     def test_existing_assessment_shapes_and_organization_contract_are_unchanged(self):
         # Fingerprints are from the pre-change repository contract snapshot.
+        def restore_old_artifact_name(value):
+            if isinstance(value, str):
+                return value.replace("questions.json", "assessment_template.json")
+            if isinstance(value, list):
+                return [restore_old_artifact_name(item) for item in value]
+            if isinstance(value, dict):
+                return {key: restore_old_artifact_name(item) for key, item in value.items()}
+            return value
+
         self.assertEqual(
-            fingerprint(self.assessment["schema"]["properties"]["question_results"]),
+            fingerprint(restore_old_artifact_name(
+                self.assessment["schema"]["properties"]["question_results"]
+            )),
             "a3b820216fc49c7d3a62e3868cbb10e8e8bed90770635e21ca9e719e4ddf3b7e",
         )
         self.assertEqual(

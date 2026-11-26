@@ -85,7 +85,9 @@ class ResearchPackagePreparer:
         plan["explicit_associations"] = [link for link in plan["explicit_associations"]]
         plan["unassigned_sources"] = {
             sid: ("disabled" if str(catalogue[sid].get("disabled", "0")).lower() in {"1", "true", "yes"}
-                  else "territory_not_applicable")
+                  else ("territory_not_applicable"
+                        if not plan["source_selection"].get(sid, {}).get("territory_applicable", False)
+                        else plan["source_selection"].get(sid, {}).get("reason", "territory_not_applicable")))
             for sid in sorted(set(catalogue) - applicable_ids)
         }
         # Fail closed if a future plan field accidentally points outside the

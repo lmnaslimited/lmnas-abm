@@ -77,6 +77,31 @@ class TerritoryResolutionTests(unittest.TestCase):
         self.assertEqual(result["question_sources"], {"q1": ["QE", "E", "C"], "q2": ["E", "C"]})
         self.assertEqual(result["explicit_associations"][1]["child_row_name"], "q-row")
 
+    def test_only_matching_categories_or_valid_explicit_links_qualify(self):
+        cat = {
+            "GENERIC": source("GENERIC"),
+            "MATCH": source("MATCH", categories=["CAT1", "UNUSED"]),
+            "UNMATCHED": source("UNMATCHED", categories=["UNUSED"]),
+            "EXPLICIT": source("EXPLICIT", ["CountryA"], ["UNUSED"]),
+            "OUTSIDE": source("OUTSIDE", ["CountryB"], ["UNUSED"]),
+        }
+        explicit = [
+            {"location": "template.lookup_sources", "lookup_source": "EXPLICIT"},
+            {"location": "template.lookup_sources", "lookup_source": "OUTSIDE"},
+        ]
+        result = resolve_sources(
+            cat, self.territories, run_territory="CountryA", scope_type="country",
+            questions=[{"name": "q1", "assessment_category": "CAT1"}],
+            explicit_links=explicit,
+        )
+        assigned = {sid for phase in result["phases"] for sid in phase["source_ids"]}
+        self.assertEqual(assigned, {"GENERIC", "MATCH", "EXPLICIT"})
+        self.assertEqual(set(result["category_sources"]), {"CAT1"})
+        self.assertEqual(result["category_sources"], {"CAT1": ["MATCH"]})
+        self.assertEqual(result["source_selection"]["UNMATCHED"]["reason"], "category_not_applicable")
+        self.assertIn("EXPLICIT", result["question_sources"]["q1"])
+        self.assertNotIn("OUTSIDE", result["question_sources"]["q1"])
+
     def test_shared_parent_descendant_source_appears_in_earliest_phase_only(self):
         shared = source("SHARED", ["Region", "CountryA"])
         result = resolve_sources({"SHARED": shared}, self.territories, run_territory="Region", scope_type="region", questions=[])
@@ -133,7 +158,7 @@ class PackageTests(unittest.TestCase):
         template = {"name": "T", "document_type": "CRM Organization", "master_prompt": "P",
                     "result_contract": "{}", "assessment_questions": [{"name": "q", "assessment_category": "CAT"}],
                     "lookup_sources": [{"name": "template-link-row", "idx": 1, "lookup_source": "EXPLICIT"}]}
-        master = source("EXPLICIT", ["Region"])
+        master = source("EXPLICIT", ["Region"], ["TENDER ONLY"])
         context = type("Context", (), {"assessment_template": template,
             "assessment_questions": template["assessment_questions"], "organization": None,
             "lookup_source_links": [{"location": "template.lookup_sources", "question_row_name": None,
@@ -141,9 +166,19 @@ class PackageTests(unittest.TestCase):
                 "child_row": template["lookup_sources"][0]}], "lookup_source_records": {"EXPLICIT": master}})()
         repo = Mock()
         repo.prepare_create_read_context.return_value = context
-        repo.get_source_catalogue.return_value = {
-            "EXPLICIT": master, "GEN": source("GEN"), "OUT": source("OUT", ["Sibling"])
+        catalogue = {
+            "EXPLICIT": master, "GEN": source("GEN"), "OUT": source("OUT", ["Sibling"]),
+            "Tenders Electronic Daily (TED) - EU Public Procurement": source(
+                "Tenders Electronic Daily (TED) - EU Public Procurement", ["Region"], ["Tender - Procurement"]
+            ),
+            "Slovakia UVO - Public Procurement Portal": source(
+                "Slovakia UVO - Public Procurement Portal", ["Country"], ["Tender - Procurement"]
+            ),
         }
+        catalogue.update({f"OTHER-{index:03d}": source(f"OTHER-{index:03d}", categories=["Tender - Procurement"])
+                          for index in range(1, 52)})
+        self.assertEqual(len(catalogue), 56)
+        repo.get_source_catalogue.return_value = catalogue
         repo.list_documents.return_value = [
             {"name": "Region", "parent_crm_territory": None, "lft": 1, "rgt": 4, "is_group": 1},
             {"name": "Country", "parent_crm_territory": "Region", "lft": 2, "rgt": 3, "is_group": 0},
@@ -156,9 +191,19 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(plan["template_explicit_source_ids"], ["EXPLICIT"])
         self.assertEqual(plan["question_categories"], {"q": "CAT"})
         catalogue = json.loads(prepared["files"]["source_catalogue.json"])
-        self.assertEqual(set(catalogue), {"EXPLICIT", "GEN", "OUT"})
+        self.assertEqual(len(catalogue), 56)
+        self.assertIn("Tenders Electronic Daily (TED) - EU Public Procurement", catalogue)
+        self.assertIn("Slovakia UVO - Public Procurement Portal", catalogue)
+        assigned = {sid for phase in plan["phases"] for sid in phase["source_ids"]}
+        self.assertEqual(assigned, {"EXPLICIT", "GEN"})
+        self.assertLessEqual(set(plan["category_sources"]), {"CAT"})
+        self.assertNotIn("TENDER ONLY", plan["category_sources"])
+        self.assertEqual(plan["unassigned_sources"]["Tenders Electronic Daily (TED) - EU Public Procurement"],
+                         "category_not_applicable")
+        self.assertEqual(plan["unassigned_sources"]["Slovakia UVO - Public Procurement Portal"],
+                         "category_not_applicable")
         self.assertEqual(prepared["preparation_summary"], {
-            "catalogue_retrieved": 3, "applicable_selected": 2, "excluded": 1,
+            "catalogue_retrieved": 56, "applicable_selected": 2, "excluded": 54,
             "organizations_retrieved": 4, "organization_exclusions": 4,
             "phase_counts": [
                 {"phase": "global", "territory": None, "source_count": 1},
