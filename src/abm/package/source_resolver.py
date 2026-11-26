@@ -67,7 +67,11 @@ def resolve_sources(
     descendants.sort(key=lambda n: (territories[n]["lft"], n))
     parent = parents.get(run_territory) if run_territory else None
     if scope_type == "region":
-        territory_phases = [("global", None), ("regional", run_territory), *(("country", name) for name in descendants)]
+        territory_phases = [
+            ("global", None), ("regional", run_territory),
+            *(("country" if parents[name] == run_territory else "territory", name)
+              for name in descendants),
+        ]
     elif scope_type == "country":
         territory_phases = [("exact", run_territory), ("parent", parent), ("global", None)]
     else:

@@ -1,0 +1,8 @@
+# Non-secret run defaults. Empty CRM selections are intentional placeholders:
+# configure them here or pass --template / --region for each invocation.
+[defaults]
+organization_assessment_template = ""
+regional_territory = ""
+
+# Relative paths are resolved from the current working directory.
+package_output_dir = "workspace/packages"

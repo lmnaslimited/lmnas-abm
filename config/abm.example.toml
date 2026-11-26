@@ -1,0 +1,6 @@
+# Copy to config/abm.toml, then replace the empty CRM selection placeholders.
+# No credentials belong in this file.
+[defaults]
+organization_assessment_template = "" # e.g. ASSTP-CRM Organization-01 after choosing it
+regional_territory = ""               # e.g. Europe after choosing it
+package_output_dir = "workspace/packages"

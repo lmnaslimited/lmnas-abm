@@ -78,6 +78,8 @@ abm run --assessment-operation UPDATE ...
 
 The operation is never inferred from an Assessment ID. CREATE and UPDATE require the applicable template or existing Assessment inputs, target, stage, run context and agent configuration.
 
+Regional package preparation is exposed separately as `abm prepare`. It requires `CREATE` and a research stage, resolves a configured or explicit Organization Assessment Template and regional CRM Territory, and writes one immutable package. UPDATE preparation and country CLI execution are unsupported; preparation does not invoke an agent.
+
 ## 6. Validation and duplicate protection
 
 CREATE performs a duplicate preflight before research and repeats the relevant check before CRM persistence. A matching draft Assessment for the same target and context blocks the operation with a clear conflict; it never silently switches to UPDATE or partially creates records. The exact matching context must follow live CRM relationships and workflow metadata. UPDATE verifies that the Assessment exists and is eligible for reassessment.
@@ -88,7 +90,7 @@ Agent output is validated against the exact CRM-supplied contract and authoritat
 
 The versioned package contains `manifest.json`, `run_context.json`, byte-for-byte `master_prompt.md` and `result_contract.json`, `template_snapshot.json`, ordered `questions.json`, optional `organization_context.json`, `source_catalogue.json`, `research_plan.json`, and `checksums.json`. See [package schema](package-schema.md). Source catalogue and plan retain CRM identities, original child rows, territorial/category associations, explicit reasons, priorities and shared-source provenance. Package creation is deterministic for identical inputs except caller-supplied creation metadata.
 
-The source resolver uses CRM Territory parent links. Regional runs order global, selected-parent, then descendant territory phases. Country scope is implemented in the resolver for future use (exact country, parent, global) and has no CLI workflow. Category matching is independent of territory; blank categories enter the generic pool.
+The source resolver uses CRM Territory parent links. Regional runs order global, selected-parent, then descendant territory phases. Only applicable sources are serialized; the full catalogue and territory tree remain internal resolution inputs. Country scope is implemented in the resolver for future use (exact country, parent, global) and has no CLI workflow. Category matching is independent of territory; blank categories enter the generic pool.
 
 ### Proposed Organization master-prompt change (not applied)
 

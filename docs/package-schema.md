@@ -11,7 +11,7 @@ Package files are UTF-8. JSON files use sorted keys, compact separators and a tr
 | `template_snapshot.json` | Complete CRM template document including embedded rows. |
 | `questions.json` | Ordered authoritative question rows. |
 | `organization_context.json` | Present when the read context contains an Organization. |
-| `source_catalogue.json` | Complete enabled source master documents keyed by CRM name. |
+| `source_catalogue.json` | Only source master documents selected for this regional run, keyed by CRM name. |
 | `research_plan.json` | Run scope; ordered territorial phases with phase-specific generic/category pools; question-to-category/source mappings; template/question explicit associations including original child-row identity/order; source priority, rationale, applicable CRM territory/category identities and earliest-phase provenance. |
 | `checksums.json` | SHA-256 of each content file except manifest and checksums themselves. |
 
@@ -19,4 +19,6 @@ Package assembly is deterministic for identical CRM and run inputs. Optional `cr
 
 The live CRM source master fields are `applicable_territories` (rows in `Territories`, link field `territory`) and `applicable_assessment_categories` (rows in `Assessment Categories`, link field `assessment_category`). Each row's full original CRM properties remain in `source_catalogue.json`. Territory ancestry comes from `CRM Territory.parent_crm_territory`; nested set `lft` order sorts descendants.
 
-`ResearchPackagePreparer.prepare_create()` composes the CRM context, full enabled source catalogue, full territory list, explicit associations, source resolver and assembler. It does not invoke an agent or expose a country-run CLI command.
+`ResearchPackagePreparer.prepare_create()` composes the CRM context, full enabled source catalogue, full territory list, explicit associations, source resolver and assembler. The full catalogue and territory tree are internal resolution inputs. The package catalogue is filtered to every matching global, regional-parent and descendant source; unrelated sources are excluded. Explicit associations outside the selected scope fail clearly. Every source ID in the plan is checked against the packaged catalogue before writing. It does not invoke an agent or expose a country-run CLI command.
+
+`config/abm.toml` holds non-secret defaults. CLI values override TOML values. The sample leaves the template and region blank by design, so an operator must select them. The CLI writes to a new run-ID directory and fails rather than overwriting an existing directory.

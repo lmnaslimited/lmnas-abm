@@ -42,6 +42,7 @@ class TerritoryResolutionTests(unittest.TestCase):
     territories = {
         "Region": {"name": "Region", "parent_crm_territory": None, "lft": 1},
         "CountryA": {"name": "CountryA", "parent_crm_territory": "Region", "lft": 2},
+        "Subdivision": {"name": "Subdivision", "parent_crm_territory": "CountryA", "lft": 2.5},
         "CountryB": {"name": "CountryB", "parent_crm_territory": "Region", "lft": 3},
         "OtherRegion": {"name": "OtherRegion", "parent_crm_territory": None, "lft": 4},
         "Sibling": {"name": "Sibling", "parent_crm_territory": "OtherRegion", "lft": 5},
@@ -49,10 +50,11 @@ class TerritoryResolutionTests(unittest.TestCase):
 
     def test_region_phases_and_scope_exclusion(self):
         cat = {"G": source("G"), "R": source("R", ["Region"]), "A": source("A", ["CountryA"]),
-               "B": source("B", ["CountryB"]), "X": source("X", ["Sibling"])}
+               "D": source("D", ["Subdivision"]), "B": source("B", ["CountryB"]), "X": source("X", ["Sibling"])}
         result = resolve_sources(cat, self.territories, run_territory="Region", scope_type="region", questions=[])
         self.assertEqual([(p["phase"], p["source_ids"]) for p in result["phases"]],
-                         [("global", ["G"]), ("regional", ["R"]), ("country", ["A"]), ("country", ["B"])])
+                         [("global", ["G"]), ("regional", ["R"]), ("country", ["A"]),
+                          ("territory", ["D"]), ("country", ["B"])])
 
     def test_country_exact_parent_global_order_and_no_siblings(self):
         cat = {"G": source("G"), "R": source("R", ["Region"]), "A": source("A", ["CountryA"]),
@@ -62,17 +64,23 @@ class TerritoryResolutionTests(unittest.TestCase):
         self.assertNotIn("B", sum((p["source_ids"] for p in result["phases"]), []))
 
     def test_category_generic_multi_category_and_explicit_associations(self):
-        cat = {"G": source("G"), "C": source("C", categories=["CAT1", "CAT2"]), "E": source("E", categories=["CAT2"])}
-        links = [{"location": "template.lookup_sources", "lookup_source": "E"}]
+        cat = {"G": source("G"), "C": source("C", categories=["CAT1", "CAT2"]),
+               "E": source("E", categories=["CAT2"]), "QE": source("QE", categories=["OTHER"])}
+        links = [
+            {"location": "template.lookup_sources", "lookup_source": "E", "child_row_name": "tpl-row", "child_row_idx": 1},
+            {"location": "assessment_questions[].additional_lookup_sources", "question_row_name": "q1",
+             "lookup_source": "QE", "child_row_name": "q-row", "child_row_idx": 3},
+        ]
         questions = [{"name": "q1", "assessment_category": "CAT1"}, {"name": "q2", "assessment_category": "CAT2"}]
         result = resolve_sources(cat, self.territories, run_territory="CountryA", scope_type="country", questions=questions, explicit_links=links)
         self.assertEqual(result["generic_source_ids"], ["G"])
-        self.assertEqual(result["question_sources"], {"q1": ["E", "C"], "q2": ["E", "C"]})
+        self.assertEqual(result["question_sources"], {"q1": ["QE", "E", "C"], "q2": ["E", "C"]})
+        self.assertEqual(result["explicit_associations"][1]["child_row_name"], "q-row")
 
     def test_shared_parent_descendant_source_appears_in_earliest_phase_only(self):
         shared = source("SHARED", ["Region", "CountryA"])
         result = resolve_sources({"SHARED": shared}, self.territories, run_territory="Region", scope_type="region", questions=[])
-        self.assertEqual([p["source_ids"] for p in result["phases"]], [[], ["SHARED"], [], []])
+        self.assertEqual([p["source_ids"] for p in result["phases"]], [[], ["SHARED"], [], [], []])
         self.assertEqual(result["source_selection"]["SHARED"]["applicable_territories"], ["Region", "CountryA"])
 
     def test_explicit_source_still_requires_territory_match(self):
@@ -108,16 +116,30 @@ class PackageTests(unittest.TestCase):
                 "child_row": template["lookup_sources"][0]}], "lookup_source_records": {"EXPLICIT": master}})()
         repo = Mock()
         repo.prepare_create_read_context.return_value = context
-        repo.get_source_catalogue.return_value = {"EXPLICIT": master, "GEN": source("GEN")}
+        repo.get_source_catalogue.return_value = {
+            "EXPLICIT": master, "GEN": source("GEN"), "OUT": source("OUT", ["Sibling"])
+        }
         repo.list_documents.return_value = [
-            {"name": "Region", "parent_crm_territory": None, "lft": 1, "rgt": 4},
-            {"name": "Country", "parent_crm_territory": "Region", "lft": 2, "rgt": 3},
+            {"name": "Region", "parent_crm_territory": None, "lft": 1, "rgt": 4, "is_group": 1},
+            {"name": "Country", "parent_crm_territory": "Region", "lft": 2, "rgt": 3, "is_group": 0},
+            {"name": "OtherRegion", "parent_crm_territory": None, "lft": 5, "rgt": 8, "is_group": 1},
+            {"name": "Sibling", "parent_crm_territory": "OtherRegion", "lft": 6, "rgt": 7, "is_group": 0},
         ]
         prepared = ResearchPackagePreparer(repo).prepare_create("T", {}, run_territory="Region")
         plan = json.loads(prepared["files"]["research_plan.json"])
         self.assertEqual(plan["phases"][1]["source_ids"], ["EXPLICIT"])
         self.assertEqual(plan["template_explicit_source_ids"], ["EXPLICIT"])
         self.assertEqual(plan["question_categories"], {"q": "CAT"})
+        catalogue = json.loads(prepared["files"]["source_catalogue.json"])
+        self.assertEqual(set(catalogue), {"EXPLICIT", "GEN"})
+        self.assertEqual(prepared["preparation_summary"], {
+            "catalogue_retrieved": 3, "applicable_selected": 2, "excluded": 1,
+            "phase_counts": [
+                {"phase": "global", "territory": None, "source_count": 1},
+                {"phase": "regional", "territory": "Region", "source_count": 1},
+                {"phase": "country", "territory": "Country", "source_count": 0},
+            ],
+        })
 
     def test_existing_package_directory_is_not_overwritten(self):
         config = {"assessment_template": {"master_prompt": "p", "result_contract": "{}"}}
@@ -128,6 +150,17 @@ class PackageTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 PackageAssembler().assemble(config, {}, output_dir=target)
             self.assertEqual((target / "keep.txt").read_text(), "keep")
+
+    def test_preparer_rejects_unknown_regional_territory(self):
+        context = type("Context", (), {"assessment_template": {"name": "T", "master_prompt": "p",
+            "result_contract": "{}", "assessment_questions": []}, "assessment_questions": [],
+            "organization": None, "lookup_source_links": [], "lookup_source_records": {}})()
+        repo = Mock()
+        repo.prepare_create_read_context.return_value = context
+        repo.get_source_catalogue.return_value = {}
+        repo.list_documents.return_value = []
+        with self.assertRaisesRegex(ValueError, "does not exist"):
+            ResearchPackagePreparer(repo).prepare_create("T", {}, run_territory="Missing")
 
 
 if __name__ == "__main__":

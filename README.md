@@ -6,7 +6,8 @@ See [CRM read integration](docs/crm-read-integration.md) for the `fr api` interf
 
 ## Project structure
 
-- `src/abm/cli.py` — command parsing and explicit assessment operation.
+- `src/abm/cli.py` — truthful run validation and executable regional CREATE package preparation.
+- `src/abm/config.py` and `config/abm.toml` — non-secret TOML defaults; template and region remain unset until selected.
 - `src/abm/orchestration/` — Prepare → Collect → Confirm coordination boundary.
 - `src/abm/crm/client.py` — read-only `fr api` transport.
 - `src/abm/crm/repository.py` — CREATE/UPDATE read contexts, embedded child-row preservation, full source catalogue and category/reference reads.
@@ -31,11 +32,20 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 
 The unit tests use mocked API responses and need no production CRM credentials. Live CRM access should only be exercised inside the configured container.
 
-## CLI
+## Configuration and CLI
+
+Edit `config/abm.toml` or pass a separate file with `--config`. The values under `[defaults]` are intentionally empty for the CRM template and region: choose them explicitly rather than inheriting an assumed business scope. Precedence is CLI option, then TOML setting, then a clear missing-value error. Relative output paths use the current working directory. Configuration rejects credential-like fields and must not contain secrets.
+
+Prepare an immutable regional package (CREATE only):
 
 ```sh
-PYTHONPATH=src python -m abm.cli run --assessment-operation CREATE
-PYTHONPATH=src python -m abm.cli run --assessment-operation UPDATE --research-stage FULL_ASSESSMENT
+PYTHONPATH=src python -m abm.cli prepare \
+  --assessment-operation CREATE \
+  --research-stage DISCOVERY \
+  --template "ASSTP-CRM Organization-01" \
+  --region Europe
 ```
 
-The CLI still validates commands only; package preparation is currently a Python API and does not start research or persistence.
+The command reads the selected template, complete enabled source catalogue and CRM Territory tree, resolves applicable sources, and writes a unique package directory under the configured output root. `--template`, `--region`, and `--output-dir` override TOML defaults; `--config` selects another configuration file.
+
+The `run` command still only validates an operation/stage request and does not execute research. UPDATE package preparation, country CLI execution, agent invocation, output validation, approval and CRM persistence are unsupported.
