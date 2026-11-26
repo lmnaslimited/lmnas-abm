@@ -1,7 +1,9 @@
 import hashlib
 import json
+import re
 import unittest
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -11,6 +13,75 @@ PROPOSAL = ROOT / "workspace" / "proposals" / "research-instructions"
 def fingerprint(value):
     encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def assert_schema_valid(test_case, instance, schema, path="$"):
+    """Check the JSON Schema keywords used by this repository contract.
+
+    The project has no JSON Schema validation dependency, so this focused
+    test helper interprets the schema's type, required, properties, items,
+    const, enum, pattern, and URI format keywords.
+    """
+    expected_type = schema.get("type")
+    expected_types = expected_type if isinstance(expected_type, list) else [expected_type]
+    type_checks = {
+        "object": lambda value: isinstance(value, dict),
+        "array": lambda value: isinstance(value, list),
+        "string": lambda value: isinstance(value, str),
+        "number": lambda value: isinstance(value, (int, float)) and not isinstance(value, bool),
+        "boolean": lambda value: isinstance(value, bool),
+        "null": lambda value: value is None,
+    }
+    if expected_type is not None:
+        test_case.assertTrue(
+            any(type_checks[kind](instance) for kind in expected_types),
+            f"{path}: expected {expected_types}, got {type(instance).__name__}",
+        )
+    if "const" in schema:
+        test_case.assertEqual(instance, schema["const"], f"{path}: const mismatch")
+    if "enum" in schema:
+        test_case.assertIn(instance, schema["enum"], f"{path}: enum mismatch")
+    if isinstance(instance, dict):
+        for key in schema.get("required", []):
+            test_case.assertIn(key, instance, f"{path}: missing required property {key!r}")
+        for key, subschema in schema.get("properties", {}).items():
+            if key in instance:
+                assert_schema_valid(test_case, instance[key], subschema, f"{path}.{key}")
+    if isinstance(instance, list) and "items" in schema:
+        for index, item in enumerate(instance):
+            assert_schema_valid(test_case, item, schema["items"], f"{path}[{index}]")
+    if isinstance(instance, str):
+        if "pattern" in schema:
+            test_case.assertRegex(instance, re.compile(schema["pattern"]), f"{path}: pattern mismatch")
+        if schema.get("format") == "uri":
+            parsed = urlsplit(instance)
+            test_case.assertTrue(parsed.scheme and parsed.netloc, f"{path}: invalid URI")
+
+
+def _assessment_response(stage, discovered_sources):
+    return {
+        "contract_type": "ASSESSMENT",
+        "contract_version": "1.1",
+        "assessment_stage": stage,
+        "subject": {"organization_name": "Example Transformer GmbH"},
+        "question_results": [{
+            "question_id": "question-row-1",
+            "assessment_category": "ORG - Manufacturing Footprint",
+            "question": "Does the organization operate transformer manufacturing facilities?",
+            "ai_rating": None,
+            "ai_evidence_status": "Insufficient",
+            "ai_confidence": "Low",
+            "ai_supporting_evidence": "Insufficient public evidence was found.",
+            "evidence_references": [],
+        }],
+        "stage_summary": {
+            "overall_finding": "Initial research summary.",
+            "mandatory_negative_found": False,
+            "insufficient_evidence_questions": ["question-row-1"],
+            "limitations": [],
+        },
+        "discovered_sources": discovered_sources,
+    }
 
 
 class ResearchContractArtifactTests(unittest.TestCase):
@@ -37,22 +108,47 @@ class ResearchContractArtifactTests(unittest.TestCase):
         self.assertEqual(item["properties"]["publisher"]["type"], ["string", "null"])
         self.assertEqual(item["properties"]["url"]["format"], "uri")
 
-    def test_both_stages_allow_empty_discovered_sources_and_reuse_ids(self):
-        field = self.assessment["schema"]["properties"]["discovered_sources"]
-        for stage in self.assessment["stages"]:
-            self.assertIn(stage, ("DISCOVERY", "FULL_ASSESSMENT"))
-            self.assertIsInstance([], list)
-            self.assertEqual(len([]), 0)  # Empty array satisfies the array field; no minItems is imposed.
-        evidence = self.assessment["schema"]["properties"]["question_results"]["items"]["properties"]["evidence_references"]
-        evidence_id = evidence["items"]["properties"]["source_id"]
-        self.assertEqual(evidence_id["type"], "string")
-        rules = " ".join(self.assessment["validation_rules"]).lower()
-        self.assertIn("same source_id", rules)
-        self.assertIn("question_results[].evidence_references", rules)
-        discovered = {"DISC-SRC-001": {"url": "https://example.org/report"}}
-        cited_id = "DISC-SRC-001"
-        self.assertIn(cited_id, discovered)
-        self.assertIsInstance(field["items"]["properties"]["source_id"], dict)
+    def test_assessment_outputs_validate_for_empty_and_populated_discovered_sources(self):
+        schema = self.assessment["schema"]
+        source = {
+            "source_id": "DISC-SRC-001",
+            "source_name": "Example Research Report",
+            "url": "https://example.org/reports/transformers",
+            "publisher": "Example Research Institute",
+            "applicable_territories": ["Germany"],
+            "applicable_assessment_categories": ["ORG - Manufacturing Footprint"],
+            "relevance": "Provides current manufacturing capacity analysis.",
+        }
+        for stage in ("DISCOVERY", "FULL_ASSESSMENT"):
+            with self.subTest(stage=stage, discovered_sources="empty"):
+                response = _assessment_response(stage, [])
+                assert_schema_valid(self, response, schema)
+
+            with self.subTest(stage=stage, discovered_sources="populated"):
+                response = _assessment_response(stage, [source])
+                response["question_results"][0]["evidence_references"].append({
+                    "source_id": source["source_id"],
+                    "url": source["url"],
+                    "relevance": "Supports the manufacturing-footprint finding.",
+                })
+                assert_schema_valid(self, response, schema)
+                self.assertEqual(
+                    response["discovered_sources"][0]["source_id"],
+                    response["question_results"][0]["evidence_references"][0]["source_id"],
+                )
+
+        invalid_sources = [
+            {key: value for key, value in source.items() if key != "publisher"},
+            {**source, "source_id": "TEMP-1"},
+            {**source, "url": "not a URL"},
+            {**source, "applicable_territories": "Germany"},
+            {**source, "applicable_assessment_categories": [None]},
+        ]
+        for invalid in invalid_sources:
+            with self.subTest(invalid=invalid):
+                response = _assessment_response("DISCOVERY", [invalid])
+                with self.assertRaises(AssertionError):
+                    assert_schema_valid(self, response, schema)
 
     def test_existing_assessment_shapes_and_organization_contract_are_unchanged(self):
         # Fingerprints are from the pre-change repository contract snapshot.
