@@ -1,16 +1,18 @@
 # LMNAs ABM
 
-Clean foundation for CRM-driven Account-Based Marketing research orchestration. The approved architecture is in [architecture](docs/architecture.md). The current implementation includes explicit CREATE/UPDATE command validation and a read-only Frappe CRM client/repository; it does not perform CRM writes, invoke a research agent, assemble run packages or manage approvals.
+Clean foundation for CRM-driven Account-Based Marketing research orchestration. The approved architecture is in [architecture](docs/architecture.md). The current implementation includes explicit CREATE/UPDATE command validation, read-only CRM catalogue retrieval, territory/category source planning and immutable package preparation. It does not invoke a research agent or perform CRM writes or approvals.
 
-See [CRM read integration](docs/crm-read-integration.md) for the verified `fr api` interface, live CRM schemas, retrieval methods and permission limits.
+See [CRM read integration](docs/crm-read-integration.md) for the `fr api` interface, schema verification status, retrieval methods and permission limits. See [package schema](docs/package-schema.md) for package files.
 
 ## Project structure
 
 - `src/abm/cli.py` — command parsing and explicit assessment operation.
 - `src/abm/orchestration/` — Prepare → Collect → Confirm coordination boundary.
 - `src/abm/crm/client.py` — read-only `fr api` transport.
-- `src/abm/crm/repository.py` — CREATE/UPDATE read contexts, embedded child-row preservation, selective lookup-source enrichment, category and reference-data reads.
-- `src/abm/package/` — immutable package assembly boundary.
+- `src/abm/crm/repository.py` — CREATE/UPDATE read contexts, embedded child-row preservation, full source catalogue and category/reference reads.
+- `src/abm/package/source_resolver.py` — territory-aware phases and category/explicit associations.
+- `src/abm/package/assembler.py` — deterministic package files and checksums.
+- `src/abm/package/preparation.py` — CRM context/catalogue/tree composition into a prepared package.
 - `src/abm/agent/` — provider-neutral research adapter boundary.
 - `src/abm/validation/` — output contract validation boundary.
 - `src/abm/assessment/` — question mapping boundary.
@@ -36,4 +38,4 @@ PYTHONPATH=src python -m abm.cli run --assessment-operation CREATE
 PYTHONPATH=src python -m abm.cli run --assessment-operation UPDATE --research-stage FULL_ASSESSMENT
 ```
 
-This validates the command only; it does not yet start a CRM or research workflow.
+The CLI still validates commands only; package preparation is currently a Python API and does not start research or persistence.

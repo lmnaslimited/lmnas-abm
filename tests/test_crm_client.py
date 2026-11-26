@@ -56,6 +56,15 @@ class FrappeAPIClientTests(unittest.TestCase):
         self.assertIn("start=0", first)
         self.assertIn("start=2", second)
 
+    def test_list_documents_rejects_repeated_page_identity(self):
+        runner = Mock(side_effect=[
+            completed('[{"name":"A"},{"name":"B"}]'),
+            completed('[{"name":"A"}]'),
+        ])
+        client = FrappeAPIClient(runner=runner)
+        with self.assertRaisesRegex(FrappeAPIError, "repeated document identities"):
+            client.list_documents("Assessment Category", page_size=2)
+
     def test_nonzero_exit_does_not_expose_cli_output_or_secret(self):
         runner = Mock(return_value=completed("", returncode=1, stderr="API secret: dont-print"))
         client = FrappeAPIClient(runner=runner)

@@ -5,6 +5,14 @@ from abm.crm.client import FrappeAPIError
 from abm.crm.repository import CRMReadContextError, CRMRepository
 
 
+def valid_source_master(name, source_name=None, url=None, **extra):
+    return {
+        "name": name, "source_name": source_name or name,
+        "url": url or f"https://{name.lower()}.example", "disabled": 0,
+        "applicable_territories": [], "applicable_assessment_categories": [], **extra,
+    }
+
+
 class CRMRepositoryTests(unittest.TestCase):
     def test_create_context_preserves_rows_and_enriches_distinct_masters(self):
         template_source_1 = {"name": "template-source-row-1", "idx": 1, "lookup_source": "SRC-A", "custom": "kept"}
@@ -27,8 +35,8 @@ class CRMRepositoryTests(unittest.TestCase):
             "assessment_questions": [q1, q2],
         }
         masters = {
-            "SRC-A": {"name": "SRC-A", "source_name": "Source A", "url": "https://a.example", "disabled": 0},
-            "SRC-B": {"name": "SRC-B", "source_name": "Source B", "url": "https://b.example", "disabled": 0},
+            "SRC-A": valid_source_master("SRC-A", "Source A", "https://a.example"),
+            "SRC-B": valid_source_master("SRC-B", "Source B", "https://b.example"),
         }
         api = Mock()
         api.get_document.side_effect = lambda doctype, name: (
@@ -91,7 +99,7 @@ class CRMRepositoryTests(unittest.TestCase):
             "name": "T-1", "lookup_sources": [template_child],
             "assessment_questions": [template_question],
         }
-        master = {"name": "SHARED", "source_name": "SHARED", "url": "https://shared.example"}
+        master = valid_source_master("SHARED", "SHARED", "https://shared.example")
         api = Mock()
         api.get_document.side_effect = lambda doctype, name: {
             ("CRM Assessment", "A-1"): assessment,
@@ -174,6 +182,17 @@ class CRMRepositoryTests(unittest.TestCase):
             repo.prepare_create_read_context("T-1", include_organization_reference_data=False)
         self.assertEqual(api.get_document.call_args_list[-1].args, ("Assessment Lookup Source", "MISSING"))
 
+    def test_disabled_explicit_source_fails_context(self):
+        template = {"name": "T-1", "assessment_questions": [],
+                    "lookup_sources": [{"name": "child-1", "lookup_source": "DISABLED"}]}
+        api = Mock()
+        api.get_document.side_effect = lambda doctype, name: (
+            template if doctype == "Assessment Template" else
+            valid_source_master("DISABLED", disabled=1)
+        )
+        with self.assertRaisesRegex(CRMReadContextError, "DISABLED.*disabled"):
+            CRMRepository(api).prepare_create_read_context("T-1", include_organization_reference_data=False)
+
     def test_source_master_without_url_fails_context(self):
         template = {
             "name": "T-1", "assessment_questions": [],
@@ -223,7 +242,7 @@ class CRMRepositoryTests(unittest.TestCase):
         api = Mock()
         api.get_document.side_effect = lambda doctype, name: (
             template if doctype == "Assessment Template" else
-            {"name": "USED", "source_name": "USED", "url": "https://used.example"}
+            valid_source_master("USED", "USED", "https://used.example")
         )
         repo = CRMRepository(api)
 

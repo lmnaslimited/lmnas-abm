@@ -101,6 +101,7 @@ class FrappeAPIClient:
             raise ValueError("page_size must be positive")
         selected_fields = list(dict.fromkeys((*fields, "name")))
         output: list[dict[str, Any]] = []
+        seen_names: set[str] = set()
         start = 0
         while True:
             params: dict[str, Any] = {
@@ -118,5 +119,16 @@ class FrappeAPIClient:
                 return output
             output.extend(rows)
             start += len(rows)
+            if len(rows) > page_size:
+                raise FrappeAPIError("Frappe document-list returned more rows than the requested page size")
+            identities = [row.get("name") for row in rows]
+            if any(not isinstance(name, str) or not name for name in identities):
+                raise FrappeAPIError("Frappe document-list page contains a row without a name")
+            if len(set(identities)) != len(identities):
+                raise FrappeAPIError("Frappe document-list page contains duplicate identities")
+            repeated = seen_names.intersection(identities)
+            if repeated:
+                raise FrappeAPIError("Frappe document-list pagination repeated document identities")
+            seen_names.update(identities)
             if len(rows) < page_size:
                 return output

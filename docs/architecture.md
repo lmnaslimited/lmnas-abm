@@ -86,7 +86,21 @@ Agent output is validated against the exact CRM-supplied contract and authoritat
 
 ## 7. Research package and agent boundary
 
-The package includes applicable artifacts such as byte-for-byte copies of `master_prompt.md` and `output_contract.json`, run context, template or existing Assessment snapshot, research sources, CRM reference data, exclusions, account context and known Organization data. A manifest records source identifiers, versions, checksums and creation metadata. Package contents are immutable for a run.
+The versioned package contains `manifest.json`, `run_context.json`, byte-for-byte `master_prompt.md` and `result_contract.json`, `template_snapshot.json`, ordered `questions.json`, optional `organization_context.json`, `source_catalogue.json`, `research_plan.json`, and `checksums.json`. See [package schema](package-schema.md). Source catalogue and plan retain CRM identities, original child rows, territorial/category associations, explicit reasons, priorities and shared-source provenance. Package creation is deterministic for identical inputs except caller-supplied creation metadata.
+
+The source resolver uses CRM Territory parent links. Regional runs order global, selected-parent, then descendant territory phases. Country scope is implemented in the resolver for future use (exact country, parent, global) and has no CLI workflow. Category matching is independent of territory; blank categories enter the generic pool.
+
+### Proposed Organization master-prompt change (not applied)
+
+**Current insertion point:** Organization template `ASSTP-CRM Organization-01`, section **7. Research methodology**, immediately after the heading and before its opening sentence: “Use the supplied research sources as starting points and identify additional credible sources where necessary.”
+
+**Reason:** the package now supplies ordered, territory-scoped phases and generic/category-specific pools. Without explicit instructions, an agent may ignore their sequence or treat generic sources as category-specific.
+
+**Proposed wording to insert:**
+
+> Before researching, read `research_plan.json` and follow its ordered territory phases. Keep findings focused on the selected run territory. Use global sources first, then the selected regional sources, then descendant territory sources in the supplied order. Use generic sources for broadly applicable research and category-specific sources only for questions associated with those CRM Assessment Category identities. Apply template-explicit and question-explicit sources at their stated priority while respecting territory applicability. A source shared across phases is researched at its earliest matching phase; retain its associations with every matching territory and category without repeating the same source research. Cite sources actually used. Do not infer territory ancestry or category matches from display names.
+
+**Existing instructions to reconcile before approval:** Section 2 lists `assessment_template.json`, `output_contract.json`, and `research_sources.json`, while this package schema uses `template_snapshot.json` plus `questions.json`, `result_contract.json`, and `source_catalogue.json` plus `research_plan.json`. Sections 3 and 12 also refer to `output_contract.json`. These artifact-name references conflict with the package filenames and need a separately approved wording decision. The existing Section 7 instruction to use starting sources and find additional credible sources remains compatible with the ordered plan. No CRM prompt was changed.
 
 Sources combine template, question and run-specific lookup sources; they are starting points, and the agent cites sources actually used. A provider-neutral adapter receives the package, invokes the configured agent, tracks status and returns complete raw response and execution metadata. It does not modify prompts/contracts/questions, map CRM records, write CRM data or approve results.
 

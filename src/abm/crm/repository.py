@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 from abm.crm.client import FrappeAPIClient, FrappeAPIError
 
@@ -20,6 +21,50 @@ ORGANIZATION_REFERENCE_DOCTYPES = {
 
 class CRMReadContextError(RuntimeError):
     """A referenced CRM document cannot form a complete read context."""
+
+
+def _is_enabled(disabled: Any) -> bool:
+    return str(disabled).strip().lower() not in {"1", "true", "yes"}
+
+
+SOURCE_CHILD_TABLES = {
+    "applicable_territories": ("Territories", "territory", "CRM Territory"),
+    "applicable_assessment_categories": (
+        "Assessment Categories", "assessment_category", "Assessment Category"
+    ),
+}
+
+
+def _validate_source_document(source: dict[str, Any]) -> None:
+    if not isinstance(source.get("source_name"), str) or not source["source_name"].strip():
+        raise CRMReadContextError(f"Source {source.get('name')!r} has no source_name")
+    url = source.get("url")
+    parsed = urlparse(url) if isinstance(url, str) else None
+    if not isinstance(url, str) or not url.strip() or parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise CRMReadContextError(f"Source {source.get('name')!r} has no usable URL")
+    for field, (child_doctype, link_field, _target) in SOURCE_CHILD_TABLES.items():
+        rows = source.get(field)
+        if not isinstance(rows, list):
+            raise CRMReadContextError(f"Source {source.get('name')!r} has an invalid {field!r} child table")
+        for row in rows:
+            if (not isinstance(row, dict) or not isinstance(row.get("name"), str)
+                    or not isinstance(row.get(link_field), str) or not row[link_field]
+                    or row.get("doctype") != child_doctype
+                    or row.get("parent") != source.get("name")
+                    or row.get("parentfield") != field
+                    or row.get("parenttype") != "Assessment Lookup Source"):
+                raise CRMReadContextError(f"Source {source.get('name')!r} has malformed rows in {field!r}")
+
+
+def _validate_source_references(repository: "CRMRepository", source: dict[str, Any]) -> None:
+    for field, (_child_doctype, link_field, doctype) in SOURCE_CHILD_TABLES.items():
+        seen: set[str] = set()
+        for row in source[field]:
+            identity = row[link_field]
+            if identity in seen:
+                raise CRMReadContextError(f"Source {source['name']!r} duplicates reference {identity!r}")
+            seen.add(identity)
+            repository._source_reference_names.setdefault(doctype, set()).add(identity)
 
 
 @dataclass(frozen=True)
@@ -59,6 +104,7 @@ class CRMRepository:
 
     def __init__(self, api: FrappeAPIClient | None = None) -> None:
         self.api = api or FrappeAPIClient()
+        self._source_reference_names: dict[str, set[str]] = {}
 
     def get_document(self, doctype: str, name: str) -> dict[str, Any]:
         return self.api.get_document(doctype, name)
@@ -100,6 +146,59 @@ class CRMRepository:
             name: self.get_document("Assessment Category", name)
             for name in category_names
         }
+
+    def get_source_catalogue(self, *, page_size: int = 100) -> dict[str, dict[str, Any]]:
+        """Read and validate every enabled lookup source master.
+
+        Child-table values are preserved exactly as returned by the full
+        document endpoint. Their Link targets are checked against live CRM
+        identities before the catalogue is returned.
+        """
+        try:
+            rows = self.list_documents(
+                "Assessment Lookup Source", fields=("name", "disabled"), page_size=page_size
+            )
+        except FrappeAPIError as exc:
+            raise CRMReadContextError(
+                "Could not list Assessment Lookup Source records with the configured CRM principal"
+            ) from exc
+        names: set[str] = set()
+        source_names: set[str] = set()
+        catalogue: dict[str, dict[str, Any]] = {}
+        self._source_reference_names = {}
+        for row in rows:
+            name = row.get("name")
+            if not isinstance(name, str) or not name.strip():
+                raise CRMReadContextError("Source catalogue list contains a row without a name")
+            if name in names:
+                raise CRMReadContextError(f"Source catalogue contains duplicate identity {name!r}")
+            names.add(name)
+            if not _is_enabled(row.get("disabled")):
+                continue
+            try:
+                doc = self.get_document("Assessment Lookup Source", name)
+            except FrappeAPIError as exc:
+                raise CRMReadContextError(f"Enabled source {name!r} could not be read") from exc
+            if doc.get("name") != name:
+                raise CRMReadContextError(f"Enabled source {name!r} returned a mismatched identity")
+            if not _is_enabled(doc.get("disabled")):
+                continue
+            _validate_source_document(doc)
+            _validate_source_references(self, doc)
+            source_name = doc["source_name"].strip()
+            if source_name in source_names:
+                raise CRMReadContextError(f"Source catalogue contains duplicate source_name {source_name!r}")
+            source_names.add(source_name)
+            catalogue[name] = doc
+        for doctype, referenced in self._source_reference_names.items():
+            try:
+                available = {row["name"] for row in self.list_documents(doctype, fields=("name",))}
+            except FrappeAPIError as exc:
+                raise CRMReadContextError(f"Cannot validate references to {doctype}") from exc
+            missing = sorted(referenced - available)
+            if missing:
+                raise CRMReadContextError(f"Source catalogue references missing {doctype} record(s): {missing!r}")
+        return catalogue
 
     @staticmethod
     def get_question_category_links(
@@ -211,6 +310,9 @@ class CRMRepository:
                 raise CRMReadContextError(
                     f"Referenced Assessment Lookup Source {name!r} has no usable URL"
                 )
+            if not _is_enabled(record.get("disabled")):
+                raise CRMReadContextError(f"Explicitly linked source {name!r} is disabled")
+            _validate_source_document(record)
             records[name] = record
         return links, records
 
